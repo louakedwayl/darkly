@@ -1,0 +1,47 @@
+# Darkly Recon
+
+## Serveur
+- IP VM : 10.0.2.15
+- Header Server : ?
+- X-Powered-By : ?
+
+## Pages
+| URL | Method | Params | Fonction |
+|---|---|---|---|
+| /index.php | GET | - | Homepage |
+| /index.php?page=signin | GET | page | Login |
+| /index.php?page=survey | GET | page | ? |
+| /index.php?page=member | GET | page | ? |
+| /index.php?page=upload
+| /index.php?page=searchimg
+| /index.php?page=feedback
+| /index.php?page=b7e44c7a40c5f80139f0a50f3650fb2bd8d00b0d24667c4c2ca32c88e13b758f
+
+## Fichiers JS
+- /js/jquery.min.js (lib standard)
+- /js/html5shiv.js (lib standard)
+- /js/skel.min.js (framework)
+- /js/skel-layers.min.js (framework)
+- /js/init.js ← CUSTOM, à lire
+
+## Fichiers CSS
+- /css/style.css
+- /css/style-xlarge.css
+
+## Endpoints cachés testés
+| URL | Response | Notes |
+|---|---|---|
+| /robots.txt | ? | ? |
+| /sitemap.xml | ? | ? |
+| /.git/ | ? | ? |
+| /admin | ? | ? |
+
+## Commentaires HTML
+- /index.php?page=... : "<!-- ... -->"
+
+## Cookies
+- Nom : Valeur : Encodage
+
+## Observations diverses
+-
+
