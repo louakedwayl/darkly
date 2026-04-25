@@ -32,6 +32,32 @@ Endpoints identifiés via navigation et Ctrl+U :
 - Media : `?page=media&src=nsa` (param `src` → LFI ?)
 - **Hash caché dans le footer** : `?page=b7e44c7a40c5f80139f0a50f3650fb2bd8d00b0d24667c4c2ca32c88e13b758f`
 
+### robots.txt
+$ curl http://127.0.0.1:8080/robots.txt
+
+User-agent: *
+Disallow: /whatever
+Disallow: /.hidden
+
+→ Deux chemins "cachés" révélés par le dev lui-même.
+
+### /whatever/
+- Listing de répertoire activé (Directory Listing enabled)
+- Contient un seul fichier : `htpasswd`
+
+### /.hidden/
+- Listing de répertoire activé
+- Contient 26 dossiers (un par lettre) + README
+- Structure labyrinthique récursive → **rabbit hole** (à confirmer plus tard, mis en standby)
+- README racine : "Tu veux de l'aide ? Moi aussi !" → troll
+- Les 26 README de niveau 1 contiennent tous des indications contradictoires ("voisin de droite/gauche/dessus/dessous") → probablement destiné à faire perdre du temps
+
+### sitemap.xml
+- [ ] À tester
+
+### Gobuster
+- 🟡 En cours : wordlist custom créée, scan à relancer avec `--exclude-length 975` (le serveur renvoie 200 sur toutes URLs inexistantes, taille fixe = page 404 déguisée par index.php)
+
 ---
 
 ## Breach #1 — Cookie Manipulation
@@ -76,40 +102,8 @@ La page sert directement un `<script>alert('Good job! Flag : ...')</script>` en 
 
 ---
 
----
-
-## Phase 1 — Recon complétée
-
-### robots.txt
-$ curl http://127.0.0.1:8080/robots.txt
-
-User-agent: *
-Disallow: /whatever
-Disallow: /.hidden
-
-→ Deux chemins "cachés" révélés par le dev lui-même.
-
-### /whatever/
-- Listing de répertoire activé (Directory Listing enabled)
-- Contient un seul fichier : `htpasswd`
-
-### /.hidden/
-- Listing de répertoire activé
-- Contient 26 dossiers (un par lettre) + README
-- Structure labyrinthique récursive → **rabbit hole** (à confirmer plus tard, mis en standby)
-- README racine : "Tu veux de l'aide ? Moi aussi !" → troll
-- Les 26 README de niveau 1 contiennent tous des indications contradictoires ("voisin de droite/gauche/dessus/dessous") → probablement destiné à faire perdre du temps
-
-### sitemap.xml
-- [ ] À tester
-
-### Gobuster
-- [ ] À lancer sur la racine pour couvrir les endpoints non listés
-
----
-
 ## Breach #3 — Directory Listing + Weak Password Storage
-**Flag :** [à confirmer une fois les credentials utilisés au bon endroit]
+**Flag :** [pas de flag direct — credentials récupérés et utilisés au breach #5]
 **Dossier :** `03_Htpasswd_Crack/`
 
 ### Résumé
@@ -136,31 +130,6 @@ Le fichier contient un couple `user:hash` avec un hash MD5 non salé, cracké en
 > robots.txt n'est pas un mécanisme de sécurité. C'est une indication pour les crawlers, pas une protection d'accès.
 > MD5 non salé ne doit jamais être utilisé pour stocker des mots de passe en 2026.
 
-### TODO suite
-Trouver **où** utiliser `root:qwerty123@` :
-- [ ] Pas sur `?page=signin` (retourne WrongAnswer.gif)
-- [ ] Tester en Basic Auth sur différents chemins (gobuster requis)
-- [ ] Tester sur une éventuelle zone admin à découvrir
-
----
-
-## État global
-| # | Breach | Statut |
-|---|---|---|
-| 1 | Cookie Manipulation | ✅ Flag validé |
-| 2 | Hidden Footer Page | ✅ Flag validé |
-| 3 | Htpasswd Disclosure | 🟡 Credentials en main, destination à trouver |
-| 4-14 | — | À explorer |
-
-## Prochaines pistes à tester
-- [ ] SQLi sur `?page=signin` (champs username/password)
-- [ ] SQLi sur `?page=member` (Search Member)
-- [ ] XSS stockée sur `?page=feedback`
-- [ ] Path Traversal sur `?page=media&src=`
-- [ ] Open Redirect sur `?page=redirect&site=`
-- [ ] File Upload bypass sur `?page=upload`
-- [ ] Gobuster full pour découvrir admin panel éventuel
-
 ---
 
 ## Breach #4 — Stored XSS
@@ -171,7 +140,7 @@ Trouver **où** utiliser `root:qwerty123@` :
 Injection d'un payload `<script>alert(...)</script>` dans un formulaire. Le serveur stocke et restitue l'input sans échappement → exécution du JS au rendu de la page.
 
 ### Méthode
-1. Champ vulnérable identifié sur [PRÉCISE[ LE FORMULAIRE : feedback ? autre ?](http://localhost:8080/?page=feedback)]
+1. Champ vulnérable identifié sur `?page=feedback`
 2. Payload injecté : `<script>alert('XSS')</script>`
 3. Submit
 4. Au reload de la page, le script s'exécute → flag affiché
@@ -192,3 +161,89 @@ Injection d'un payload `<script>alert(...)</script>` dans un formulaire. Le serv
 - Cookies `HttpOnly` pour empêcher le vol de session via XSS
 
 ---
+
+## Breach #5 — Authentication Bypass via Credential Reuse
+**Flag :** `d19b4823e0d5600ceed56d5e896ef328d7a2b9e7ac7e80f4fcdb9b10bcb3e7ff`
+**Dossier :** `05_Admin_Auth/`
+
+### Résumé
+Découverte d'une zone admin `/admin/` accessible directement sans Basic Auth, contenant un formulaire de login. Les credentials récupérés au breach #3 (`root:qwerty123@`) sont valides → flag.
+
+### Méthode
+1. Découverte du chemin `/admin/` (test direct du chemin physique, hors routeur `?page=`)
+2. Vérification : `curl http://127.0.0.1:8080/admin/` → renvoie le formulaire de login (200, pas de Basic Auth)
+3. Soumission des creds htpasswd via POST :
+   ```
+   curl -X POST http://127.0.0.1:8080/admin/ \
+     -d "username=root&password=qwerty123@&Login=Login" \
+     -c cookies.txt -b cookies.txt -L
+   ```
+4. Réponse : `<h2>The flag is : d19b4823e0d5600ceed56d5e896ef328d7a2b9e7ac7e80f4fcdb9b10bcb3e7ff</h2>`
+
+### Architecture défaillante observée
+Deux systèmes de routing parallèles sur le même serveur :
+- **`?page=X`** → routeur PHP custom via `index.php` (controllers internes)
+- **`/admin/`** → chemin physique servi directement par nginx (dossier réel sur filesystem)
+
+La zone `/admin/` est **isolée du routeur principal**, donc échappe aux éventuels middlewares de sécurité côté PHP. Cumul de fautes :
+- Le htpasswd existe mais n'est **pas configuré dans nginx** pour protéger réellement le chemin
+- Le formulaire PHP valide les creds en dur contre le **même couple** que celui exposé publiquement
+- Aucun rate limiting, aucun lockout, aucune 2FA
+- Typo dans le HTML (`recquired` au lieu de `required`) → indicateur de code amateur
+
+### Failles cumulées
+- **A07:2021 — Identification and Authentication Failures** (credential reuse, single factor)
+- **A05:2021 — Security Misconfiguration** (htpasswd non appliqué côté serveur)
+- **Defense in depth absent** : un seul couple user/pass protège tout, et il a déjà fuité
+
+### Règle violée
+> Une zone admin doit être protégée par plusieurs couches indépendantes (network ACL, Basic Auth serveur, auth applicative, 2FA). Réutiliser le même secret entre deux mécanismes annule l'effet de la défense en profondeur.
+
+### Contre-mesures
+- Activer la directive nginx `auth_basic` + `auth_basic_user_file` sur `/admin/`
+- Stocker le htpasswd **hors du document root** (`/etc/nginx/.htpasswd` plutôt que `/var/www/html/whatever/`)
+- Utiliser bcrypt/argon2 au lieu de MD5 dans le htpasswd (`htpasswd -B`)
+- Implémenter rate limiting (`limit_req` nginx) sur les endpoints d'auth
+- 2FA TOTP via lib comme RobThree/TwoFactorAuth
+
+---
+
+## État global
+| # | Breach | Statut |
+|---|---|---|
+| 1 | Cookie Manipulation | ✅ Flag validé |
+| 2 | Hidden Footer Page | ✅ Flag validé |
+| 3 | Htpasswd Disclosure | ✅ Credentials exploités au #5 |
+| 4 | Stored XSS | ✅ Flag validé |
+| 5 | Admin Auth Bypass | ✅ Flag validé |
+| 6-14 | — | À explorer |
+
+**Score : 5/14**
+
+---
+
+## Prochaines pistes à tester (ordre de priorité)
+
+### Priorité haute — ROI immédiat
+- [ ] **SQLi sur `?page=signin`** : auth bypass classique (`admin'-- `, `' OR 1=1-- `)
+- [ ] **SQLi UNION sur `?page=member`** (Search Member) : extraction via `information_schema`
+- [ ] **Path Traversal sur `?page=media&src=`** : `../../../../etc/passwd`, `php://filter/convert.base64-encode/resource=index`
+
+### Priorité moyenne
+- [ ] **Open Redirect sur `?page=redirect&site=`** : tester URL externe arbitraire
+- [ ] **File Upload bypass sur `?page=upload`** : extension/MIME/magic bytes
+- [ ] **Reflected XSS sur `?page=searchimg`** : payload dans param de recherche
+
+### Priorité basse / parallèle
+- [ ] **Gobuster** : finir le scan avec `--exclude-length 975` pour mapper les chemins physiques restants
+- [ ] **`.hidden/` parsing** : `wget -r` + grep récursif (bypass du rabbit hole textuel)
+- [ ] **sitemap.xml** : vérification rapide
+
+---
+
+## Leçons techniques cumulées
+1. **Reconnaissance d'abord** : `whatweb`, `robots.txt`, Ctrl+U, sitemap → toujours avant tout payload
+2. **Deux systèmes de routing peuvent coexister** : routeur applicatif (`?page=`) vs filesystem (`/admin/`). Tester les deux.
+3. **MD5 et SHA-1 sont morts** pour le stockage de mots de passe. CrackStation casse en secondes.
+4. **Security through obscurity ≠ sécurité** : breach #2 et #5 démontrent que cacher un chemin n'est pas une protection.
+5. **Credential reuse** = faille systémique. Un seul secret exposé compromet tous les systèmes qui le réutilisent.
