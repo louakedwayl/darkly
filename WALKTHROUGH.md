@@ -514,13 +514,45 @@ Cumul de fautes :
 ---
 
 ## Breach intra #10 — File upload
-**Flag :** ❌ — non encore récupéré
-**Dossier :** `10_File_Upload/` (à créer)
+**Flag :** `46910d9ce35b385885a9f7e2b336249d622f29b267a1771fbacf52133beddba8`
+**Dossier :** `10_File_Upload/`
 
-### Piste
-- Endpoint : `?page=upload`
-- Upload accepte les vraies images mais aucun flag affiché → critère caché à identifier
-- Tester : extensions (`.phtml`, `.phar`, `.php5`), magic bytes (`GIF89a;` + payload PHP), double extension, dimensions précises, Content-Type spoofing
+### Résumé
+Le formulaire `?page=upload` accepte un fichier dont l'extension n'est pas validée et dont le Content-Type est trusted. Upload d'un `.php` avec `Content-Type: image/jpeg` → succès. Pas de validation des magic bytes, pas de re-encoding, pas de whitelist d'extensions.
+
+### Méthode
+\`\`\`bash
+echo '<?php echo "test"; ?>' > /tmp/hack.php
+
+curl -X POST "http://127.0.0.1:8080/index.php?page=upload" \
+  -F "MAX_FILE_SIZE=100000" \
+  -F "uploaded=@/tmp/hack.php;type=image/jpeg" \
+  -F "Upload=Upload"
+\`\`\`
+→ Réponse : `The flag is : 46910d9c...` + `/tmp/hack.php succesfully uploaded.`
+
+### Faille exploitée
+- **A04:2021 — Insecure Design** : aucune validation des fichiers uploadés
+- **A05:2021 — Security Misconfiguration** : Content-Type trusted depuis le client
+- **CWE-434 — Unrestricted Upload of File with Dangerous Type**
+
+### Impact
+- **RCE directe** si combiné avec breach #3 (LFI) :
+\`\`\`
+?page=../../../../tmp/hack
+\`\`\`
+→ Le PHP uploadé est exécuté par le serveur.
+- Webshell persistante
+- Pivot vers compromission système complète (lecture `/etc/shadow`, etc.)
+- Stockage de malware servi à d'autres visiteurs
+
+### Contre-mesures
+- **Whitelist stricte d'extensions** côté serveur : `['jpg', 'png', 'gif', 'webp']`
+- **Validation des magic bytes** (`finfo_file()` en PHP, pas `$_FILES['type']`)
+- **Re-encoding systématique** : `imagecreatefrompng()` puis `imagepng()` détruit tout PHP injecté
+- **Stocker hors webroot** ou avec extension renommée (`uploads/abc123.bin`)
+- **`.htaccess` dans `uploads/`** : `<FilesMatch "\.(php|phar|phtml)$"> Deny from all </FilesMatch>`
+- **Content-Disposition: attachment** pour forcer le téléchargement, jamais l'exécution
 
 ---
 
